@@ -5,7 +5,6 @@ from docx import Document
 from docx.shared import Pt, Inches
 from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
 from markdown_it import MarkdownIt
-from markdown_it.extensions.texmath import texmath_plugin
 from bs4 import BeautifulSoup
 
 # Connect to SQLite database (or create it if it doesn't exist)
@@ -47,8 +46,8 @@ def delete_file_from_database(file_id):
 
 # Function to convert Markdown to DOCX with proper formatting
 def markdown_to_docx(md_content, output_filename):
-    # Initialize Markdown parser with LaTeX math support
-    md = MarkdownIt().use(texmath_plugin)
+    # Initialize Markdown parser
+    md = MarkdownIt()
 
     # Convert Markdown to HTML
     html_content = md.render(md_content)
