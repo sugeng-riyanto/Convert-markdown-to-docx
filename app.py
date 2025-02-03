@@ -100,33 +100,13 @@ def markdown_to_docx(md_content, output_filename):
                         doc.add_picture(image_url, width=Inches(4))  # Adjust width as needed
                     except Exception as e:
                         doc.add_paragraph(f"Image could not be loaded: {image_url}")
-                elif child.name == 'span' and 'class' in child.attrs and 'math' in child['class']:
-                    # Handle LaTeX math equations
-                    equation_text = child.text
-                    paragraph = doc.add_paragraph()
-                    run = paragraph.add_run(equation_text)
-                    run.font.size = Pt(11)
-                    run.font.name = 'Cambria Math'
 
-        elif element.name == 'table':
-            # Handle tables
-            table = doc.add_table(rows=0, cols=len(element.find_all('th') or element.find_all('td')))
-            table.style = 'Table Grid'
-
-            # Add header row if present
-            header_row = element.find('tr')
-            if header_row:
-                cells = header_row.find_all(['th', 'td'])
-                row_cells = table.add_row().cells
-                for i, cell in enumerate(cells):
-                    row_cells[i].text = cell.text
-
-            # Add data rows
-            for row in element.find_all('tr')[1:]:
-                cells = row.find_all(['th', 'td'])
-                row_cells = table.add_row().cells
-                for i, cell in enumerate(cells):
-                    row_cells[i].text = cell.text
+        elif element.name == 'ul' or element.name == 'ol':
+            # Handle unordered and ordered lists
+            for li in element.find_all('li'):
+                paragraph = doc.add_paragraph(style='List Bullet' if element.name == 'ul' else 'List Number')
+                run = paragraph.add_run(li.text)
+                run.font.size = Pt(11)
 
     # Process all top-level elements
     for element in soup:
