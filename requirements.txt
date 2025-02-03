@@ -1,4 +1,4 @@
-streamlit
-python-docx
-markdown
+markdown-it-py
+markdown-it-mathjax3
 beautifulsoup4
+python-docx
