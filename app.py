@@ -2,7 +2,7 @@ import streamlit as st
 import sqlite3
 import os
 from docx import Document
-from docx.shared import Pt
+from docx.shared import Pt, Inches
 from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
 import markdown
 from bs4 import BeautifulSoup
@@ -74,14 +74,48 @@ def markdown_to_docx(md_content, output_filename):
             paragraph = doc.add_paragraph()
             run = paragraph.add_run(element.text)
             run.font.size = Pt(11)
+            
+            # Handle links in paragraphs
+            for link in element.find_all('a'):
+                hyperlink = paragraph.add_hyperlink(link['href'])
+                hyperlink.text = link.text
+                hyperlink.style = "Hyperlink"
+        
         elif element.name == 'strong':
             paragraph = doc.add_paragraph()
             run = paragraph.add_run(element.text)
             run.bold = True
+        
         elif element.name == 'em':
             paragraph = doc.add_paragraph()
             run = paragraph.add_run(element.text)
             run.italic = True
+        
+        elif element.name == 'img':
+            # Handle images
+            image_url = element.get('src', '')
+            try:
+                # Add the image to the DOCX file
+                doc.add_picture(image_url, width=Inches(4))  # Adjust width as needed
+            except Exception as e:
+                # If the image cannot be loaded, add a placeholder
+                doc.add_paragraph(f"Image could not be loaded: {image_url}")
+        
+        elif element.name == 'table':
+            # Handle tables
+            table = doc.add_table(rows=0, cols=len(element.find_all('th')))
+            table.style = 'Table Grid'
+            
+            # Add header row
+            header_row = table.add_row().cells
+            for i, th in enumerate(element.find_all('th')):
+                header_row[i].text = th.text
+            
+            # Add data rows
+            for row in element.find_all('tr')[1:]:
+                data_row = table.add_row().cells
+                for i, td in enumerate(row.find_all('td')):
+                    data_row[i].text = td.text
     
     # Save the DOCX file
     doc.save(output_filename)
@@ -120,34 +154,35 @@ elif page == "View Markdown Files":
     if files:
         st.subheader("List of Saved Markdown Files:")
         
-        # Display each file with a download button
-        for file_id, filename in files:
-            col1, col2, col3 = st.columns([3, 1, 1])
-            
-            with col1:
-                st.write(f"**{filename}**")
-            
-            with col2:
-                # Button to delete the file
-                if st.button(f"Delete {filename}", key=f"delete_{file_id}"):
-                    delete_file_from_database(file_id)
-                    st.experimental_rerun()  # Refresh the page after deletion
-            
-            with col3:
-                # Button to view the content of the file
-                if st.button(f"View {filename}", key=f"view_{file_id}"):
-                    content = fetch_file_content(file_id)
-                    st.text_area("Markdown Content:", content, height=300)
-            
+        # Dropdown to select a file for preview
+        selected_file = st.selectbox("Select a Markdown file to preview", [filename for _, filename in files])
+        
+        # Get the selected file's ID and content
+        selected_file_id = next(id for id, filename in files if filename == selected_file)
+        selected_file_content = fetch_file_content(selected_file_id)
+        
+        # Show the full-page Markdown preview
+        st.subheader(f"Preview: {selected_file}")
+        st.markdown(selected_file_content, unsafe_allow_html=True)  # Render Markdown
+        
+        # Buttons for actions (Delete, Download as DOCX)
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            # Button to delete the file
+            if st.button(f"Delete {selected_file}", key=f"delete_{selected_file_id}"):
+                delete_file_from_database(selected_file_id)
+                st.experimental_rerun()  # Refresh the page after deletion
+        
+        with col2:
             # Button to download as DOCX
-            if st.button(f"Download {filename} as DOCX", key=f"docx_{file_id}"):
-                content = fetch_file_content(file_id)
-                docx_filename = f"{os.path.splitext(filename)[0]}.docx"
-                markdown_to_docx(content, docx_filename)
+            if st.button(f"Download {selected_file} as DOCX", key=f"docx_{selected_file_id}"):
+                docx_filename = f"{os.path.splitext(selected_file)[0]}.docx"
+                markdown_to_docx(selected_file_content, docx_filename)
                 
                 with open(docx_filename, "rb") as docx_file:
                     st.download_button(
-                        label=f"Download {filename} as DOCX",
+                        label=f"Download {selected_file} as DOCX",
                         data=docx_file,
                         file_name=docx_filename,
                         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
