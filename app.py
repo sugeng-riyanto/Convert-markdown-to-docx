@@ -2,9 +2,7 @@ import streamlit as st
 import sqlite3
 import os
 from docx import Document
-from docx.shared import Pt, Inches
-from bs4 import BeautifulSoup
-import pypandoc
+from docx.shared import Pt
 import pypandoc
 
 # Download Pandoc if it's not already available
@@ -12,7 +10,7 @@ try:
     pypandoc.get_pandoc_version()
 except OSError:
     pypandoc.download_pandoc()
-    
+
 # Connect to SQLite database (or create it if it doesn't exist)
 conn = sqlite3.connect('markdown_files.db', check_same_thread=False)
 c = conn.cursor()
@@ -51,26 +49,33 @@ def delete_file_from_database(file_id):
     conn.commit()
 
 # Function to convert Markdown to DOCX with proper formatting using Pandoc
-import os
-import pypandoc
-
 def markdown_to_docx(md_content, output_filename):
     try:
         # Create a temporary file for Pandoc to write the DOCX output
         temp_file = "temp_output.docx"
         
-        # Convert Markdown to DOCX using Pandoc
+        # Convert Markdown to DOCX using Pandoc with LaTeX math support
         output = pypandoc.convert_text(
             md_content,
             'docx',
             format='markdown+tex_math_dollars',  # Supports LaTeX-style equations
-            outputfile=temp_file
+            outputfile=temp_file,
+            extra_args=[
+                '--mathjax',          # Ensures proper rendering of math equations
+                '--wrap=preserve',    # Preserve formatting of paragraphs
+                '--standalone',       # Include all necessary components in the output
+                '--highlight-style=pygments'  # Improve syntax highlighting for equations
+            ]
         )
         
         # Check if the temporary file was created successfully
         if os.path.exists(temp_file):
             # Rename the temporary file to the desired output filename
             os.rename(temp_file, output_filename)
+            
+            # Post-process the DOCX file to ensure proper formatting
+            post_process_docx(output_filename)
+            
             return True
         else:
             st.error("Error: Temporary DOCX file was not created.")
@@ -78,6 +83,28 @@ def markdown_to_docx(md_content, output_filename):
     except Exception as e:
         st.error(f"Error converting Markdown to DOCX: {e}")
         return False
+
+# Function to post-process the DOCX file
+def post_process_docx(docx_filename):
+    try:
+        # Open the DOCX file
+        doc = Document(docx_filename)
+        
+        # Iterate through all paragraphs
+        for paragraph in doc.paragraphs:
+            # Adjust font size and spacing for better readability
+            for run in paragraph.runs:
+                run.font.size = Pt(11)  # Set font size to 11pt
+            
+            # Ensure block-level equations are centered
+            if paragraph.text.strip().startswith("$$") and paragraph.text.strip().endswith("$$"):
+                paragraph.alignment = 1  # Center alignment
+        
+        # Save the updated DOCX file
+        doc.save(docx_filename)
+    except Exception as e:
+        st.error(f"Error post-processing DOCX file: {e}")
+
 # Sidebar for navigation
 st.sidebar.title("Navigation")
 page = st.sidebar.radio("Go to", ["Upload Markdown", "View Markdown Files"])
@@ -85,14 +112,17 @@ page = st.sidebar.radio("Go to", ["Upload Markdown", "View Markdown Files"])
 # Upload Markdown Page
 if page == "Upload Markdown":
     st.title("Upload Markdown File")
+    
     # File uploader for Markdown file
     uploaded_file = st.file_uploader("Upload a Markdown file", type=["md"])
     if uploaded_file is not None:
         # Read the content of the uploaded Markdown file
         md_content = uploaded_file.read().decode("utf-8")
+        
         # Display the Markdown content
         st.subheader("Uploaded Markdown Content:")
         st.text(md_content)
+        
         # Save the Markdown content to the database
         if st.button("Save to Database"):
             save_to_database(uploaded_file.name, md_content)
@@ -101,18 +131,23 @@ if page == "Upload Markdown":
 # View Markdown Files Page
 elif page == "View Markdown Files":
     st.title("View Saved Markdown Files")
+    
     # Fetch all saved Markdown files from the database
     files = fetch_all_files()
     if files:
         st.subheader("List of Saved Markdown Files:")
+        
         # Dropdown to select a file for preview
         selected_file = st.selectbox("Select a Markdown file to preview", [filename for _, filename in files])
+        
         # Get the selected file's ID and content
         selected_file_id = next(id for id, filename in files if filename == selected_file)
         selected_file_content = fetch_file_content(selected_file_id)
+        
         # Show the full-page Markdown preview
         st.subheader(f"Preview: {selected_file}")
         st.markdown(selected_file_content, unsafe_allow_html=True)  # Render Markdown
+        
         # Buttons for actions (Delete, Download as DOCX)
         col1, col2 = st.columns(2)
         with col1:
@@ -120,6 +155,7 @@ elif page == "View Markdown Files":
             if st.button(f"Delete {selected_file}", key=f"delete_{selected_file_id}"):
                 delete_file_from_database(selected_file_id)
                 st.experimental_rerun()  # Refresh the page after deletion
+        
         with col2:
             # Button to download as DOCX
             if st.button(f"Download {selected_file} as DOCX", key=f"docx_{selected_file_id}"):
